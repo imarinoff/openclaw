@@ -1,0 +1,156 @@
+# OpenClaw — EasyPanel Stack
+#
+# Deploy as a "Stack" in EasyPanel (Stacks → Create → paste this file).
+# All settings are controlled from EasyPanel's "Environment" tab per service.
+#
+# ── REQUIRED ────────────────────────────────────────────────────────────────
+#   OPENCLAW_GATEWAY_TOKEN  Long random secret — generate with:
+#                             openssl rand -hex 32
+#
+#   At least one AI provider key:
+#     OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY
+#
+# ── BROWSER ─────────────────────────────────────────────────────────────────
+#   The openclaw-browser service runs a persistent Chromium instance that the
+#   gateway uses for browser-tool requests.  OPENCLAW_BROWSER_CDP_URL on the
+#   gateway side is pre-wired to the internal browser service address; you only
+#   need to change it if you rename the browser service.
+#
+#   To watch the browser live, expose port 6080 in EasyPanel and open the noVNC
+#   URL (http://<host>:6080/vnc.html).  Set OPENCLAW_BROWSER_NOVNC_PASSWORD to
+#   lock it down.
+# ────────────────────────────────────────────────────────────────────────────
+
+services:
+  openclaw-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks:
+      # Internal: gateway ↔ browser CDP traffic, unreachable from outside.
+      - openclaw-internal
+      # EasyPanel Traefik network: lets the reverse proxy route traffic in.
+      - easypanel
+    environment:
+      HOME: /home/node
+      NODE_ENV: production
+
+      # ── Gateway auth (REQUIRED) ──────────────────────────────────────────
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+
+      # ── Browser integration ──────────────────────────────────────────────
+      # Points the gateway at the companion browser service below.
+      # Change only if you rename the service or use an external Chromium.
+      OPENCLAW_BROWSER_CDP_URL: ${OPENCLAW_BROWSER_CDP_URL:-http://openclaw-browser:9222}
+
+      # ── AI provider keys (set at least one) ─────────────────────────────
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+      # ── Messaging channels (optional) ───────────────────────────────────
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+
+      # ── Search / tool keys (optional) ───────────────────────────────────
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+
+    command:
+      - node
+      - openclaw.mjs
+      - gateway
+      - --allow-unconfigured
+      - --bind
+      - lan
+      - --port
+      - "18789"
+    volumes:
+      # Persists openclaw.json, sessions, credentials, and workspace across
+      # container restarts.  EasyPanel creates this named volume automatically.
+      - openclaw_config:/home/node/.openclaw
+    # Port 18789 is NOT bound to the host here — EasyPanel's Traefik routes
+    # traffic in via the `easypanel` network using its domain/proxy config.
+    # To also allow direct host access (e.g. for testing), uncomment:
+    # ports:
+    #   - "18789:18789"
+    depends_on:
+      - openclaw-browser
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  openclaw-browser:
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox-browser
+    networks:
+      # Internal only — the browser is never directly reachable from outside.
+      - openclaw-internal
+    environment:
+      # ── CDP (Chrome DevTools Protocol) ──────────────────────────────────
+      # Port that socat exposes to the gateway (must match OPENCLAW_BROWSER_CDP_URL).
+      OPENCLAW_BROWSER_CDP_PORT: ${OPENCLAW_BROWSER_CDP_PORT:-9222}
+
+      # ── REQUIRED in container: disable Chrome kernel sandbox ─────────────
+      # Chromium running inside a Docker container (without user-namespace
+      # remapping) must use --no-sandbox.  Do NOT set to 0 unless you have
+      # seccomp/apparmor hardening in place.
+      OPENCLAW_BROWSER_NO_SANDBOX: ${OPENCLAW_BROWSER_NO_SANDBOX:-1}
+
+      # ── Display mode ─────────────────────────────────────────────────────
+      # 0 = headful via Xvfb (default, reduces bot-detection)
+      # 1 = headless (no Xvfb, lighter but more detectable)
+      OPENCLAW_BROWSER_HEADLESS: ${OPENCLAW_BROWSER_HEADLESS:-0}
+
+      # ── noVNC visual observer (web-based VNC viewer) ─────────────────────
+      OPENCLAW_BROWSER_VNC_PORT: ${OPENCLAW_BROWSER_VNC_PORT:-5900}
+      OPENCLAW_BROWSER_NOVNC_PORT: ${OPENCLAW_BROWSER_NOVNC_PORT:-6080}
+      OPENCLAW_BROWSER_ENABLE_NOVNC: ${OPENCLAW_BROWSER_ENABLE_NOVNC:-1}
+      # Set a password to protect the noVNC endpoint (recommended if exposed).
+      OPENCLAW_BROWSER_NOVNC_PASSWORD: ${OPENCLAW_BROWSER_NOVNC_PASSWORD:-}
+
+      # ── Performance / compatibility ──────────────────────────────────────
+      # 1 = disable GPU/3D flags (safe default for containers without GPU)
+      # 0 = keep GPU flags (needed for WebGL / 3D sites)
+      OPENCLAW_BROWSER_DISABLE_GRAPHICS_FLAGS: ${OPENCLAW_BROWSER_DISABLE_GRAPHICS_FLAGS:-1}
+      OPENCLAW_BROWSER_DISABLE_EXTENSIONS: ${OPENCLAW_BROWSER_DISABLE_EXTENSIONS:-1}
+      # Max renderer processes (lower = less memory, higher = more parallelism)
+      OPENCLAW_BROWSER_RENDERER_PROCESS_LIMIT: ${OPENCLAW_BROWSER_RENDERER_PROCESS_LIMIT:-2}
+
+    ports:
+      # noVNC web UI — expose in EasyPanel to watch the browser live.
+      # URL: http://<your-host>:6080/vnc.html
+      - "6080:6080"
+    # Chromium requires extra shared memory; 256 MB is the recommended minimum.
+    shm_size: 256mb
+    restart: unless-stopped
+
+volumes:
+  # Named volume — EasyPanel manages the lifecycle.
+  # To wipe all gateway state, delete this volume from EasyPanel's Volumes tab.
+  openclaw_config:
+
+networks:
+  openclaw-internal:
+    # Stack-internal bridge — only gateway and browser are attached.
+    # Not reachable from outside the stack.
+    driver: bridge
+    internal: true
+  easypanel:
+    # Pre-created by EasyPanel; shared with Traefik for reverse-proxy routing.
+    external: true
