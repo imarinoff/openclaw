@@ -20,7 +20,6 @@ OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-${HOME}/.openclaw}"
 CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-${OPENCLAW_STATE_DIR}/openclaw.json}"
 
 mkdir -p "${OPENCLAW_STATE_DIR}"
-chmod 700 "${OPENCLAW_STATE_DIR}"
 
 if [ ! -f "${CONFIG_PATH}" ]; then
   echo "OpenClaw: bootstrapping initial config from environment..."
