@@ -116,6 +116,9 @@ ENV NODE_ENV=production
 # The node:22-bookworm image includes a 'node' user (uid 1000)
 # This reduces the attack surface by preventing container escape via root privileges
 USER node
+# Pre-create the state directory as the node user so that a new named volume
+# mounted here is initialised with node:node ownership by Docker on first use.
+RUN mkdir -p /home/node/.openclaw
 
 # Start gateway server with default config.
 # Binds to loopback (127.0.0.1) by default for security.
