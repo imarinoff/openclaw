@@ -38,6 +38,12 @@ services:
       # ── Gateway auth (REQUIRED) ──────────────────────────────────────────
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
 
+      # ── Control UI origin policy ─────────────────────────────────────────
+      # Leave blank to use Host-header fallback (works automatically behind
+      # EasyPanel/Traefik).  Set to a comma-separated list of exact origins
+      # (e.g. https://openclaw.example.com) to lock down allowed origins.
+      OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS: ${OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS:-}
+
       # ── Browser integration ──────────────────────────────────────────────
       # Points the gateway at the companion browser service below.
       # Change only if you rename the service or use an external Chromium.

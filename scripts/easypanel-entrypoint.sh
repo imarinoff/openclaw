@@ -32,8 +32,21 @@ const stateDir   = process.env.OPENCLAW_STATE_DIR  || path.join(home, '.openclaw
 const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, 'openclaw.json');
 
 const cfg = {
-  gateway: { mode: 'local' },
+  gateway: {
+    mode: 'local',
+    controlUi: {},
+  },
 };
+
+// Control UI origin policy — required when gateway binds to non-loopback.
+const rawOrigins = (process.env.OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS || '').trim();
+if (rawOrigins) {
+  cfg.gateway.controlUi.allowedOrigins = rawOrigins.split(',').map(s => s.trim()).filter(Boolean);
+} else {
+  // Fallback: derive allowed origin from the incoming Host header.
+  // Safe behind a trusted reverse proxy (EasyPanel/Traefik) that sets Host correctly.
+  cfg.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback = true;
+}
 
 const cdpUrl = (process.env.OPENCLAW_BROWSER_CDP_URL || '').trim();
 if (cdpUrl) {
